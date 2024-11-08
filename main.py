@@ -2,8 +2,9 @@ import requests
 import os
 from ultralytics import YOLO
 from flask import Flask, request, jsonify
-import cv2
 from PIL import Image, ImageDraw, ImageFont
+
+app = Flask(__name__)
 
 def getImage():
     url = 'http://172.17.40.97:8080/photo.jpg'
@@ -19,50 +20,81 @@ def getImage():
         print("Request failed:", e)
 
 def readImage():
-    directory = "/"  # 设置图片存储的目录
+    directory = "/"  # Set the directory for image storage
+    if not os.path.exists(directory):
+        print("Directory does not exist.")
+        return
+
     for filename in os.listdir(directory):
-        if filename.endswith(".jpg") or filename.endswith(".png"):  # 根据需要过滤文件类型
+        if filename.endswith(".jpg") or filename.endswith(".png"):
             image_path = os.path.join(directory, filename)
-            print(f"正在显示: {image_path}")
+            print(f"Displaying: {image_path}")
 
 def processImage():
-    model = YOLO('yolov8n.pt')
-    filepath = "downloaded_photo.jpg"  # 假设下载后的图片路径
-    output_path = "output_with_detections.jpg"  # 输出图片的路径
+    try:
+        model = YOLO('yolov8n.pt')
+    except Exception as e:
+        print("Failed to load YOLO model:", e)
+        return
+
+    filepath = "downloaded_photo.jpg"
+    output_path = "output_with_detections.jpg"
+
+    if not os.path.exists(filepath):
+        print("Image file does not exist, cannot process.")
+        return
 
     img = Image.open(filepath)
     draw = ImageDraw.Draw(img)
-    font = ImageFont.load_default()
-    if os.path.exists(filepath):
-        results = model(filepath)
-        detections = []
-        for result in results:
-            for box in result.boxes:
-                detections.append({
-                    "class": result.names[int(box.cls)],
-                    "confidence": box.conf.item(),
-                    "bbox": box.xyxy.tolist()[0]  # Bounding box coordinates
-                })
-                # 绘制边框和标签
-                x1, y1, x2, y2 = bbox
-                draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
-                label = f"{class_name} {confidence:.2f}"
-                text_size = draw.textsize(label, font)
-                draw.rectangle([x1, y1 - text_size[1], x1 + text_size[0], y1], fill="red")
-                draw.text((x1, y1 - text_size[1]), label, fill="white", font=font)
-        img.save(output_path)
-        print(f"处理完成，图片已保存至: {output_path}")
-        print("检测结果:", detections)
-        print(detections)
-    else:
-        print("图片文件不存在，无法进行处理。")
     
+    # Use a default truetype font if available for better readability
+    try:
+        font = ImageFont.truetype("arial.ttf", 15)
+    except IOError:
+        font = ImageFont.load_default()
     
+    results = model(filepath)
+    detections = []
+    for result in results:
+        for box in result.boxes:
+            detections.append({
+                "class": result.names[int(box.cls)],
+                "confidence": box.conf.item(),
+                "bbox": box.xyxy.tolist()[0]
+            })
+            x1, y1, x2, y2 = box.xyxy.tolist()[0]
+            draw.rectangle([x1, y1, x2, y2], outline="red", width=2)
+            label = f"{result.names[int(box.cls)]} {box.conf.item():.2f}"
+            
+            # Adjust handling of text size
+            text_size = draw.textlength(label, font)
+            if isinstance(text_size, tuple):
+                text_width, text_height = text_size
+            else:
+                text_width, text_height = text_size, 10  # Default height if not tuple
+            
+            # Draw text background and label
+            draw.rectangle([x1, y1 - text_height, x1 + text_width, y1], fill="red")
+            draw.text((x1, y1 - text_height), label, fill="white", font=font)
+
+    img.save(output_path)
+    print(f"Processing completed. Image saved at: {output_path}")
+    print("Detections:", detections)
+    
+    return detections
+
+@app.route('/process', methods=['POST'])
+def process_route():
+    getImage()
+    detections = processImage()
+    return jsonify(detections=detections), 200
 
 def main():
-    getImage()     # 下载图片
-    readImage()    # 读取目录中的图片
-    processImage() # 处理图片
+    getImage()     # Download the image
+    readImage()    # Read images in the directory
+    processImage() # Process the image
 
 if __name__ == "__main__":
     main()
+    # To start the Flask server, uncomment the line below
+    # app.run(debug=True, host='0.0.0.0', port=5000)
