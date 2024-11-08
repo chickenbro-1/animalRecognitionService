@@ -3,8 +3,19 @@ import os
 from ultralytics import YOLO
 from flask import Flask, request, jsonify
 from PIL import Image, ImageDraw, ImageFont
+import serial
 
 app = Flask(__name__)
+def listen():
+    bluetooth = serial.Serial('/dev/tty.usbserial-130', 9600)
+    while True:
+        if bluetooth.in_waiting > 0:
+            message = bluetooth.readline().decode().strip()
+            print("Received from Bluetooth:", message)
+            if message == "Take Photo":
+                getImage()     # Download the image
+                readImage()    # Read images in the directory
+                processImage() # Process the image
 
 def getImage():
     url = 'http://172.17.40.97:8080/photo.jpg'
@@ -76,8 +87,9 @@ def processImage():
             # Draw text background and label
             draw.rectangle([x1, y1 - text_height, x1 + text_width, y1], fill="red")
             draw.text((x1, y1 - text_height), label, fill="white", font=font)
-
+    
     img.save(output_path)
+    img.show(output_path)
     print(f"Processing completed. Image saved at: {output_path}")
     print("Detections:", detections)
     
@@ -90,11 +102,7 @@ def process_route():
     return jsonify(detections=detections), 200
 
 def main():
-    getImage()     # Download the image
-    readImage()    # Read images in the directory
-    processImage() # Process the image
+    listen()
 
 if __name__ == "__main__":
     main()
-    # To start the Flask server, uncomment the line below
-    # app.run(debug=True, host='0.0.0.0', port=5000)
