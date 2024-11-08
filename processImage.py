@@ -1,6 +1,6 @@
 import os
-from flask import Flask, request, jsonify
 from ultralytics import YOLO
+from flask import Flask, request, jsonify
 import cv2
 
 # Initialize YOLOv8 model
